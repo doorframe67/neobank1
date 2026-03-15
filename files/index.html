@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Vertex Bank – Online Banking</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; color: #222; }
+
+    /* NAV */
+    nav { background: #0C1F3F; color: white; padding: 0 2rem; display: flex;
+          align-items: center; justify-content: space-between; height: 56px; }
+    .nav-brand { font-size: 18px; letter-spacing: 0.05em; color: #B5D4F4; }
+    #nav-user { font-size: 13px; color: #85B7EB; display: none; }
+    #logout-btn { background: transparent; border: 1px solid #378ADD; color: #85B7EB;
+                  padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;
+                  display: none; margin-left: 12px; }
+    #logout-btn:hover { background: #042C53; }
+
+    /* PAGES */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* AUTH */
+    .auth-wrap { display: flex; align-items: center; justify-content: center;
+                 min-height: calc(100vh - 56px); padding: 2rem; }
+    .auth-card { background: white; border: 1px solid #ddd; border-radius: 12px;
+                 padding: 2.5rem 2rem; width: 100%; max-width: 400px;
+                 box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    .auth-title { text-align: center; margin-bottom: 1.5rem; }
+    .auth-title h2 { font-size: 22px; color: #0C1F3F; }
+    .auth-title p { font-size: 13px; color: #666; margin-top: 4px; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 12px; color: #555; margin-bottom: 6px;
+                        letter-spacing: 0.05em; text-transform: uppercase; }
+    .form-group input { width: 100%; padding: 10px 12px; border: 1px solid #ccc;
+                        border-radius: 6px; font-size: 14px; }
+    .form-group input:focus { outline: none; border-color: #378ADD; }
+    .btn-primary { width: 100%; background: #0C1F3F; color: white; border: none;
+                   padding: 11px; border-radius: 6px; font-size: 14px; cursor: pointer; margin-top: 0.5rem; }
+    .btn-primary:hover { background: #185FA5; }
+    .auth-switch { text-align: center; margin-top: 1rem; font-size: 13px; color: #666; }
+    .auth-switch a { color: #185FA5; cursor: pointer; }
+    .error-msg { color: #c0392b; font-size: 12px; margin-top: 6px; display: none; }
+
+    /* DASHBOARD */
+    .dash-body { padding: 2rem; max-width: 960px; margin: 0 auto; }
+    .dash-greeting { font-size: 22px; margin-bottom: 1.5rem; color: #0C1F3F; }
+    .cards-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                 gap: 12px; margin-bottom: 2rem; }
+    .metric-card { background: white; border-radius: 8px; padding: 1rem 1.25rem;
+                   border: 1px solid #e8edf4; }
+    .metric-card .lbl { font-size: 11px; color: #888; text-transform: uppercase;
+                        letter-spacing: 0.06em; margin-bottom: 6px; }
+    .metric-card .val { font-size: 22px; font-weight: 600; color: #0C1F3F; }
+    .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media(max-width:640px){ .dash-grid { grid-template-columns: 1fr; } }
+    .section-card { background: white; border: 1px solid #e8edf4; border-radius: 10px;
+                    padding: 1.25rem; }
+    .section-title { font-size: 14px; font-weight: 600; margin-bottom: 1rem; color: #333; }
+    .quick-btn { display: flex; align-items: center; gap: 10px; background: #f4f6f9;
+                 border: 1px solid #e8edf4; border-radius: 6px; padding: 10px 14px;
+                 cursor: pointer; margin-bottom: 8px; font-size: 13px; color: #333;
+                 width: 100%; text-align: left; }
+    .quick-btn:hover { border-color: #378ADD; background: #EBF4FF; color: #0C1F3F; }
+    .mini-txn { display: flex; justify-content: space-between; align-items: center;
+                padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .mini-txn:last-child { border-bottom: none; }
+    .mini-name { font-size: 13px; }
+    .mini-date { font-size: 11px; color: #999; margin-top: 2px; }
+    .cr { color: #1a7a4a; font-weight: 600; font-size: 13px; }
+    .dr { color: #c0392b; font-weight: 600; font-size: 13px; }
+
+    /* TRANSFER */
+    .transfer-wrap { padding: 2rem; max-width: 520px; margin: 0 auto; }
+    .transfer-wrap h2 { font-size: 22px; margin-bottom: 1.5rem; color: #0C1F3F; }
+    .transfer-card { background: white; border: 1px solid #e8edf4; border-radius: 12px;
+                     padding: 1.75rem; }
+    .balance-note { background: #EBF4FF; border-radius: 6px; padding: 10px 14px;
+                    font-size: 13px; color: #0C447C; margin-bottom: 1.25rem; }
+    .success-msg { display: none; background: #d4edda; border: 1px solid #28a745;
+                   border-radius: 6px; padding: 12px 14px; font-size: 13px; color: #155724; margin-bottom: 1rem; }
+    .back-link { display: inline-block; margin-top: 1rem; font-size: 13px; color: #185FA5; cursor: pointer; }
+
+    /* HISTORY */
+    .history-wrap { padding: 2rem; max-width: 800px; margin: 0 auto; }
+    .history-wrap h2 { font-size: 22px; margin-bottom: 0.5rem; color: #0C1F3F; }
+    .filter-row { display: flex; gap: 8px; margin-bottom: 1.25rem; flex-wrap: wrap; }
+    .filter-btn { border: 1px solid #ccc; background: white; color: #555; padding: 6px 14px;
+                  border-radius: 20px; font-size: 12px; cursor: pointer; }
+    .filter-btn.on { background: #0C1F3F; color: white; border-color: #0C1F3F; }
+    .txn-table { width: 100%; border-collapse: collapse; background: white;
+                 border: 1px solid #e8edf4; border-radius: 10px; overflow: hidden; }
+    .txn-table th { background: #f4f6f9; font-size: 11px; letter-spacing: 0.06em;
+                    text-transform: uppercase; color: #666; padding: 10px 14px; text-align: left; }
+    .txn-table td { font-size: 13px; padding: 10px 14px; border-top: 1px solid #f0f0f0; }
+    .txn-table tr:hover td { background: #fafbfc; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; }
+    .badge-cr { background: #d4edda; color: #155724; }
+    .badge-dr { background: #f8d7da; color: #721c24; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">VERTEX BANK</div>
+  <div style="display:flex;align-items:center">
+    <span id="nav-user"></span>
+    <button id="logout-btn" onclick="logout()">Sign Out</button>
+  </div>
+</nav>
+
+<!-- LOGIN PAGE -->
+<div class="page active" id="page-login">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-title"><h2>VERTEX BANK</h2><p>Secure Online Banking</p></div>
+      <div class="form-group"><label>Email</label><input type="email" id="l-email" placeholder="you@example.com"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="l-pass" placeholder="••••••••"></div>
+      <div class="error-msg" id="l-err">Invalid email or password.</div>
+      <button class="btn-primary" onclick="login()">Sign In</button>
+      <div class="auth-switch">No account? <a onclick="show('page-signup')">Open one here</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- SIGNUP PAGE -->
+<div class="page" id="page-signup">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-title"><h2>Open Account</h2><p>Join Vertex Bank today</p></div>
+      <div class="form-group"><label>Full Name</label><input type="text" id="s-name" placeholder="Jane Doe"></div>
+      <div class="form-group"><label>Email</label><input type="email" id="s-email" placeholder="you@example.com"></div>
+      <div class="form-group"><label>Password</label><input type="password" id="s-pass" placeholder="Create a password"></div>
+      <div class="form-group"><label>Opening Deposit (₹)</label><input type="number" id="s-dep" placeholder="10000" min="1000"></div>
+      <div class="error-msg" id="s-err">Please fill all fields correctly.</div>
+      <button class="btn-primary" onclick="signup()">Create Account</button>
+      <div class="auth-switch">Already a member? <a onclick="show('page-login')">Sign in</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD PAGE -->
+<div class="page" id="page-dashboard">
+  <div class="dash-body">
+    <div class="dash-greeting">Welcome back, <span id="greet"></span></div>
+    <div class="cards-row">
+      <div class="metric-card"><div class="lbl">Available Balance</div><div class="val" id="m-bal">₹0</div></div>
+      <div class="metric-card"><div class="lbl">Total Credits</div><div class="val" id="m-cr">₹0</div></div>
+      <div class="metric-card"><div class="lbl">Total Debits</div><div class="val" id="m-dr">₹0</div></div>
+      <div class="metric-card"><div class="lbl">Transactions</div><div class="val" id="m-cnt">0</div></div>
+    </div>
+    <div class="dash-grid">
+      <div class="section-card">
+        <div class="section-title">Quick Actions</div>
+        <button class="quick-btn" onclick="show('page-transfer')">&#8644; Transfer Money</button>
+        <button class="quick-btn" onclick="show('page-history')">&#9776; View Transactions</button>
+      </div>
+      <div class="section-card">
+        <div class="section-title">Recent Transactions</div>
+        <div id="recent-txns"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TRANSFER PAGE -->
+<div class="page" id="page-transfer">
+  <div class="transfer-wrap">
+    <h2>Transfer Money</h2>
+    <div class="transfer-card">
+      <div class="balance-note">Available: <strong id="t-bal">₹0</strong></div>
+      <div class="success-msg" id="t-success">Transfer successful!</div>
+      <div class="form-group"><label>Recipient Name</label><input type="text" id="t-name" placeholder="Full name"></div>
+      <div class="form-group"><label>Account Number</label><input type="text" id="t-acc" placeholder="10-digit account number"></div>
+      <div class="form-group"><label>Amount (₹)</label><input type="number" id="t-amt" placeholder="0.00" min="1"></div>
+      <div class="form-group"><label>Remark (optional)</label><input type="text" id="t-rem" placeholder="e.g. Rent"></div>
+      <div class="error-msg" id="t-err">Please fill all fields and check your balance.</div>
+      <button class="btn-primary" onclick="transfer()">Confirm Transfer</button>
+      <div><a class="back-link" onclick="show('page-dashboard')">&#8592; Back to Dashboard</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY PAGE -->
+<div class="page" id="page-history">
+  <div class="history-wrap">
+    <h2>Transaction History</h2>
+    <p style="font-size:13px;color:#888;margin-bottom:1rem">Account No: <strong id="h-accno"></strong></p>
+    <div class="filter-row">
+      <button class="filter-btn on" onclick="filter('all',this)">All</button>
+      <button class="filter-btn" onclick="filter('credit',this)">Credits</button>
+      <button class="filter-btn" onclick="filter('debit',this)">Debits</button>
+    </div>
+    <table class="txn-table">
+      <thead><tr><th>Date</th><th>Description</th><th>Type</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody id="txn-body"></tbody>
+    </table>
+    <div><a class="back-link" onclick="show('page-dashboard')">&#8592; Back to Dashboard</a></div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────
+let users = [];
+let currentUser = null;
+
+// Demo user pre-loaded
+users.push({
+  name: "Demo User", email: "demo@vertex.com", password: "demo123",
+  balance: 85000, accountNo: "4521873690",
+  transactions: [
+    { date: "01 Mar 2026", desc: "Account Opening Deposit", type: "credit", amount: 100000 },
+    { date: "05 Mar 2026", desc: "Electricity Bill Payment",  type: "debit",  amount: 2450  },
+    { date: "08 Mar 2026", desc: "Salary Credit",            type: "credit", amount: 45000 },
+    { date: "10 Mar 2026", desc: "Transfer – Riya Sharma",   type: "debit",  amount: 18000 },
+    { date: "12 Mar 2026", desc: "Amazon Online Shopping",   type: "debit",  amount: 3750  },
+    { date: "14 Mar 2026", desc: "Interest Credit",          type: "credit", amount: 1200  }
+  ]
+});
+
+// ─── HELPERS ─────────────────────────────────────────
+function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN"); }
+function today() {
+  return new Date().toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric" });
+}
+function genAcc() { return "" + Math.floor(1000000000 + Math.random() * 9000000000); }
+
+function show(id) {
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  if (id === "page-dashboard") renderDash();
+  if (id === "page-history")   renderHistory();
+  if (id === "page-transfer") {
+    document.getElementById("t-bal").textContent = fmt(currentUser.balance);
+    document.getElementById("t-success").style.display = "none";
+    document.getElementById("t-err").style.display = "none";
+  }
+}
+
+// ─── AUTH ─────────────────────────────────────────────
+function login() {
+  const email = document.getElementById("l-email").value.trim();
+  const pass  = document.getElementById("l-pass").value;
+  const user  = users.find(u => u.email === email && u.password === pass);
+  if (!user) { document.getElementById("l-err").style.display = "block"; return; }
+  document.getElementById("l-err").style.display = "none";
+  currentUser = user;
+  document.getElementById("nav-user").textContent  = user.name;
+  document.getElementById("nav-user").style.display = "inline";
+  document.getElementById("logout-btn").style.display = "inline-block";
+  show("page-dashboard");
+}
+
+function signup() {
+  const name  = document.getElementById("s-name").value.trim();
+  const email = document.getElementById("s-email").value.trim();
+  const pass  = document.getElementById("s-pass").value;
+  const dep   = parseFloat(document.getElementById("s-dep").value);
+  const err   = document.getElementById("s-err");
+  if (!name || !email || !pass || isNaN(dep) || dep < 1000) {
+    err.textContent = "Please fill all fields (minimum deposit ₹1,000).";
+    err.style.display = "block"; return;
+  }
+  if (users.find(u => u.email === email)) {
+    err.textContent = "Email already registered.";
+    err.style.display = "block"; return;
+  }
+  err.style.display = "none";
+  const user = {
+    name, email, password: pass, balance: dep, accountNo: genAcc(),
+    transactions: [{ date: today(), desc: "Account Opening Deposit", type: "credit", amount: dep }]
+  };
+  users.push(user);
+  currentUser = user;
+  document.getElementById("nav-user").textContent  = user.name;
+  document.getElementById("nav-user").style.display = "inline";
+  document.getElementById("logout-btn").style.display = "inline-block";
+  show("page-dashboard");
+}
+
+function logout() {
+  currentUser = null;
+  document.getElementById("nav-user").style.display  = "none";
+  document.getElementById("logout-btn").style.display = "none";
+  show("page-login");
+}
+
+// ─── DASHBOARD ────────────────────────────────────────
+function renderDash() {
+  const u = currentUser;
+  document.getElementById("greet").textContent = u.name.split(" ")[0];
+  document.getElementById("m-bal").textContent = fmt(u.balance);
+  document.getElementById("m-cr").textContent  = fmt(u.transactions.filter(t=>t.type==="credit").reduce((s,t)=>s+t.amount,0));
+  document.getElementById("m-dr").textContent  = fmt(u.transactions.filter(t=>t.type==="debit").reduce((s,t)=>s+t.amount,0));
+  document.getElementById("m-cnt").textContent = u.transactions.length;
+
+  const recent = [...u.transactions].reverse().slice(0, 4);
+  document.getElementById("recent-txns").innerHTML = recent.length
+    ? recent.map(t => `
+        <div class="mini-txn">
+          <div><div class="mini-name">${t.desc}</div><div class="mini-date">${t.date}</div></div>
+          <div class="${t.type==="credit"?"cr":"dr"}">${t.type==="credit"?"+":"-"}${fmt(t.amount)}</div>
+        </div>`).join("")
+    : `<p style="font-size:13px;color:#aaa">No transactions yet.</p>`;
+}
+
+// ─── TRANSFER ─────────────────────────────────────────
+function transfer() {
+  const u      = currentUser;
+  const name   = document.getElementById("t-name").value.trim();
+  const acc    = document.getElementById("t-acc").value.trim();
+  const amount = parseFloat(document.getElementById("t-amt").value);
+  const rem    = document.getElementById("t-rem").value.trim() || "Transfer";
+  const err    = document.getElementById("t-err");
+
+  if (!name || !acc || isNaN(amount) || amount <= 0) {
+    err.textContent = "Please fill all required fields."; err.style.display = "block"; return;
+  }
+  if (amount > u.balance) {
+    err.textContent = "Insufficient balance."; err.style.display = "block"; return;
+  }
+  err.style.display = "none";
+  u.balance -= amount;
+  u.transactions.push({ date: today(), desc: `Transfer to ${name} – ${rem}`, type: "debit", amount });
+  document.getElementById("t-bal").textContent = fmt(u.balance);
+  document.getElementById("t-success").style.display = "block";
+  ["t-name","t-acc","t-amt","t-rem"].forEach(id => document.getElementById(id).value = "");
+}
+
+// ─── HISTORY ──────────────────────────────────────────
+function renderHistory() {
+  document.getElementById("h-accno").textContent = currentUser.accountNo;
+  renderTable(currentUser.transactions);
+}
+
+function renderTable(txns) {
+  const sorted = [...txns].reverse();
+  document.getElementById("txn-body").innerHTML = sorted.length
+    ? sorted.map(t => `
+        <tr>
+          <td>${t.date}</td>
+          <td>${t.desc}</td>
+          <td><span class="badge ${t.type==="credit"?"badge-cr":"badge-dr"}">${t.type}</span></td>
+          <td style="text-align:right" class="${t.type==="credit"?"cr":"dr"}">${t.type==="credit"?"+":"-"}${fmt(t.amount)}</td>
+        </tr>`).join("")
+    : `<tr><td colspan="4" style="text-align:center;padding:1.5rem;color:#aaa">No transactions found.</td></tr>`;
+}
+
+function filter(type, btn) {
+  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("on"));
+  btn.classList.add("on");
+  const txns = currentUser.transactions;
+  renderTable(type === "all" ? txns : txns.filter(t => t.type === type));
+}
+</script>
+</body>
+</html>
