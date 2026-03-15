@@ -1,12 +1,3 @@
-// ─────────────────────────────────────────────────────
-//  Vertex Bank – Backend Server
-//  Stack : Node.js + Express + MySQL + Nodemailer
-//  File  : server.js
-//
-//  Install dependencies:
-//  npm install express mysql2 bcryptjs jsonwebtoken cors nodemailer
-// ─────────────────────────────────────────────────────
-
 const express    = require("express");
 const mysql      = require("mysql2/promise");
 const bcrypt     = require("bcryptjs");
@@ -15,336 +6,187 @@ const cors       = require("cors");
 const nodemailer = require("nodemailer");
 
 const app  = express();
-const PORT = 3000;
-
-// ─── CHANGE THESE BEFORE DEPLOYING ───────────────────
-const JWT_SECRET   = "your_secret_key_change_this";
-
-// Create a dedicated Gmail account for your project
-// e.g. vertexbank.noreply@gmail.com
-// Then enable "App Passwords" in Google Account settings
-// and paste the 16-character app password below
-const GMAIL_USER = "your_project_email@gmail.com";   // ← your Gmail
-const GMAIL_PASS = "xxxx xxxx xxxx xxxx";             // ← Gmail App Password (not your real password!)
-// ─────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-// ─── DATABASE CONNECTION ──────────────────────────────
+const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret";
+const GMAIL_USER = process.env.GMAIL_USER || "";
+const GMAIL_PASS = process.env.GMAIL_PASS || "";
+
 const db = mysql.createPool({
-  host:     process.env.MYSQL_HOST     || "localhost",
-  user:     process.env.MYSQL_USER     || "root",
-  password: process.env.MYSQL_PASSWORD || "yourpassword",
-  database: process.env.MYSQL_DATABASE || "vertexbank"
+  host:     process.env.MYSQL_HOST,
+  user:     process.env.MYSQL_USER,
+  password: process.env.MYSQL_PASSWORD,
+  database: process.env.MYSQL_DATABASE,
+  port:     process.env.MYSQL_PORT || 3306,
+  waitForConnections: true,
+  connectionLimit: 10
 });
 
-// ─── EMAIL TRANSPORTER (Nodemailer + Gmail) ───────────
+async function initDB() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        name       VARCHAR(100)  NOT NULL,
+        email      VARCHAR(150)  NOT NULL UNIQUE,
+        password   VARCHAR(255)  NOT NULL,
+        account_no VARCHAR(20)   NOT NULL UNIQUE,
+        balance    DECIMAL(15,2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        user_id     INT           NOT NULL,
+        description VARCHAR(255)  NOT NULL,
+        type        ENUM('credit','debit') NOT NULL,
+        amount      DECIMAL(15,2) NOT NULL,
+        created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+    console.log("DB tables ready");
+  } catch (err) {
+    console.error("DB init error:", err.message);
+  }
+}
+
 const transporter = nodemailer.createTransport({
   service: "gmail",
-  auth: {
-    user: GMAIL_USER,
-    pass: GMAIL_PASS   // This is the App Password, NOT your Gmail login password
-  }
+  auth: { user: GMAIL_USER, pass: GMAIL_PASS }
 });
 
-// ─── IN-MEMORY OTP STORE ──────────────────────────────
-// Stores OTPs temporarily while user verifies.
-// Format: { "email@x.com": { otp: "482910", expiresAt: <timestamp>, name, password, deposit } }
-// We don't save the user to DB until OTP is verified.
 const otpStore = {};
+function generateOTP() { return Math.floor(100000 + Math.random() * 900000).toString(); }
 
-// ─── HELPER: Generate 6-digit OTP ────────────────────
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-// ─── HELPER: Send OTP Email ───────────────────────────
 async function sendOTPEmail(toEmail, otp, name) {
-  const mailOptions = {
-    from: `"Vertex Bank" <${GMAIL_USER}>`,
+  await transporter.sendMail({
+    from: `"NeoBank" <${GMAIL_USER}>`,
     to: toEmail,
-    subject: "Your Vertex Bank Verification Code",
-    html: `
-      <div style="font-family: Georgia, serif; max-width: 480px; margin: 0 auto; padding: 40px 32px; background: #ffffff; border: 1px solid #e8e6e0;">
-        <div style="text-align: center; margin-bottom: 32px;">
-          <div style="display: inline-block; border: 1.5px solid #C9A84C; border-radius: 4px; padding: 8px 14px;">
-            <span style="font-size: 16px; letter-spacing: 0.12em; color: #0C1F3F; font-weight: 600;">VERTEX BANK</span>
-          </div>
-        </div>
-
-        <p style="font-size: 15px; color: #1A1916; margin-bottom: 8px;">Dear ${name},</p>
-        <p style="font-size: 14px; color: #6B6860; line-height: 1.7; margin-bottom: 28px;">
-          Thank you for opening an account with Vertex Bank. Use the verification code below to complete your registration.
-        </p>
-
-        <div style="background: #F7F5F0; border: 1px solid #E8E6E0; border-radius: 4px; padding: 28px; text-align: center; margin-bottom: 28px;">
-          <p style="font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: #ADAAA2; margin-bottom: 12px;">Your verification code</p>
-          <p style="font-size: 40px; font-weight: 600; letter-spacing: 0.3em; color: #0C1F3F; margin: 0; font-family: 'Courier New', monospace;">${otp}</p>
-          <p style="font-size: 12px; color: #ADAAA2; margin-top: 12px; margin-bottom: 0;">Valid for 10 minutes</p>
-        </div>
-
-        <p style="font-size: 13px; color: #ADAAA2; line-height: 1.6;">
-          If you did not request this, please ignore this email. Do not share this code with anyone.
-        </p>
-
-        <hr style="border: none; border-top: 0.5px solid #E8E6E0; margin: 28px 0;" />
-        <p style="font-size: 11px; color: #ADAAA2; text-align: center; letter-spacing: 0.05em;">
-          © 2026 VERTEX BANK · This is an automated message, please do not reply.
-        </p>
-      </div>
-    `
-  };
-
-  await transporter.sendMail(mailOptions);
+    subject: "Your NeoBank Verification Code",
+    html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#fff;border:1px solid #e8e6e0;"><h2 style="color:#0C1F3F;">NEOBANK</h2><p style="color:#6B6860;font-size:14px;">Hi ${name}, here is your verification code:</p><div style="background:#F7F5F0;border-radius:4px;padding:24px;text-align:center;margin:24px 0;"><p style="font-size:36px;font-weight:bold;letter-spacing:0.3em;color:#0C1F3F;margin:0;">${otp}</p><p style="font-size:12px;color:#ADAAA2;margin-top:8px;">Valid for 10 minutes</p></div><p style="font-size:12px;color:#ADAAA2;">Do not share this code with anyone.</p></div>`
+  });
 }
 
-// ─── MIDDLEWARE: Verify JWT Token ─────────────────────
 function authenticate(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ error: "No token provided" });
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    res.status(401).json({ error: "Invalid or expired token" });
-  }
+  try { req.user = jwt.verify(token, JWT_SECRET); next(); }
+  catch { res.status(401).json({ error: "Invalid or expired token" }); }
 }
 
-// ─────────────────────────────────────────────────────
-//  ROUTE 1: Send OTP
-//  POST /api/send-otp
-//  Body: { name, email, password, opening_deposit }
-//
-//  What it does:
-//  - Validates inputs
-//  - Checks email isn't already registered
-//  - Generates a 6-digit OTP
-//  - Stores OTP + user details temporarily in memory
-//  - Sends OTP to user's email via Gmail
-//  - Does NOT create the DB user yet (that happens after OTP verify)
-// ─────────────────────────────────────────────────────
+app.get("/", (req, res) => res.json({ status: "NeoBank server is running!" }));
+
 app.post("/api/send-otp", async (req, res) => {
   const { name, email, password, opening_deposit } = req.body;
-
-  // Basic validation
-  if (!name || !email || !password || !opening_deposit) {
-    return res.status(400).json({ error: "All fields are required" });
-  }
-  if (opening_deposit < 1000) {
-    return res.status(400).json({ error: "Minimum deposit is ₹1,000" });
-  }
-  if (password.length < 6) {
-    return res.status(400).json({ error: "Password must be at least 6 characters" });
-  }
-
+  if (!name || !email || !password || !opening_deposit) return res.status(400).json({ error: "All fields are required" });
+  if (opening_deposit < 1000) return res.status(400).json({ error: "Minimum deposit is 1000" });
+  if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
   try {
-    // Check if email already exists in DB
     const [existing] = await db.query("SELECT id FROM users WHERE email = ?", [email]);
-    if (existing.length > 0) {
-      return res.status(409).json({ error: "This email is already registered. Please sign in." });
-    }
-
-    // Generate OTP and set expiry (10 minutes from now)
-    const otp       = generateOTP();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes in milliseconds
-
-    // Hash the password now so we don't store it in plain text even temporarily
+    if (existing.length > 0) return res.status(409).json({ error: "Email already registered. Please sign in." });
+    const otp = generateOTP();
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Store everything in memory under this email key
-    otpStore[email] = {
-      otp,
-      expiresAt,
-      name,
-      hashedPassword,
-      opening_deposit
-    };
-
-    // Send the email
+    otpStore[email] = { otp, expiresAt: Date.now() + 10 * 60 * 1000, name, hashedPassword, opening_deposit };
     await sendOTPEmail(email, otp, name.split(" ")[0]);
-
-    console.log(`OTP sent to ${email}: ${otp}`); // visible in your Render logs (remove in production)
-
-    res.json({ message: "OTP sent successfully. Please check your email." });
-
+    console.log(`OTP for ${email}: ${otp}`);
+    res.json({ message: "OTP sent successfully." });
   } catch (err) {
-    console.error("send-otp error:", err);
-    res.status(500).json({ error: "Failed to send OTP. Check your Gmail config." });
+    console.error("send-otp error:", err.message);
+    res.status(500).json({ error: "Failed to send OTP. Check GMAIL_USER and GMAIL_PASS environment variables." });
   }
 });
 
-// ─────────────────────────────────────────────────────
-//  ROUTE 2: Verify OTP + Create Account
-//  POST /api/verify-otp
-//  Body: { email, otp }
-//
-//  What it does:
-//  - Checks OTP exists for this email
-//  - Checks OTP hasn't expired
-//  - Checks OTP matches
-//  - Creates the user in MySQL
-//  - Records opening deposit transaction
-//  - Clears OTP from memory
-//  - Returns account number
-// ─────────────────────────────────────────────────────
 app.post("/api/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
-
-  if (!email || !otp) {
-    return res.status(400).json({ error: "Email and OTP are required" });
-  }
-
+  if (!email || !otp) return res.status(400).json({ error: "Email and OTP required" });
   const record = otpStore[email];
-
-  // Check OTP exists
-  if (!record) {
-    return res.status(400).json({ error: "No OTP found for this email. Please sign up again." });
-  }
-
-  // Check OTP hasn't expired
-  if (Date.now() > record.expiresAt) {
-    delete otpStore[email]; // clean up expired OTP
-    return res.status(400).json({ error: "OTP has expired. Please sign up again to get a new code." });
-  }
-
-  // Check OTP matches
-  if (record.otp !== otp.toString().trim()) {
-    return res.status(400).json({ error: "Incorrect OTP. Please try again." });
-  }
-
-  // OTP is valid — now create the account in MySQL
+  if (!record) return res.status(400).json({ error: "No OTP found. Please sign up again." });
+  if (Date.now() > record.expiresAt) { delete otpStore[email]; return res.status(400).json({ error: "OTP expired. Please sign up again." }); }
+  if (record.otp !== otp.toString().trim()) return res.status(400).json({ error: "Incorrect OTP. Try again." });
   try {
     const accountNo = Math.floor(1000000000 + Math.random() * 9000000000).toString();
-
-    const [result] = await db.query(
-      "INSERT INTO users (name, email, password, account_no, balance) VALUES (?, ?, ?, ?, ?)",
-      [record.name, email, record.hashedPassword, accountNo, record.opening_deposit]
-    );
-
-    // Record the opening deposit as a transaction
-    await db.query(
-      "INSERT INTO transactions (user_id, description, type, amount) VALUES (?, ?, ?, ?)",
-      [result.insertId, "Account Opening Deposit", "credit", record.opening_deposit]
-    );
-
-    // Clean up OTP from memory
+    const [result] = await db.query("INSERT INTO users (name,email,password,account_no,balance) VALUES (?,?,?,?,?)", [record.name, email, record.hashedPassword, accountNo, record.opening_deposit]);
+    await db.query("INSERT INTO transactions (user_id,description,type,amount) VALUES (?,?,?,?)", [result.insertId, "Account Opening Deposit", "credit", record.opening_deposit]);
     delete otpStore[email];
-
-    res.status(201).json({
-      message: "Account created successfully!",
-      accountNo
-    });
-
+    res.status(201).json({ message: "Account created!", accountNo });
   } catch (err) {
-    console.error("verify-otp error:", err);
-    res.status(500).json({ error: "Server error while creating account." });
+    console.error("verify-otp error:", err.message);
+    res.status(500).json({ error: "Server error creating account." });
   }
 });
 
-// ─── ROUTE: Resend OTP ────────────────────────────────
-// POST /api/resend-otp
-// Body: { email }
-// Only works if there's already a pending OTP for this email
 app.post("/api/resend-otp", async (req, res) => {
   const { email } = req.body;
   const record = otpStore[email];
-
-  if (!record) {
-    return res.status(400).json({ error: "No pending signup for this email. Please start again." });
-  }
-
-  // Generate fresh OTP and reset expiry
-  const otp       = generateOTP();
-  const expiresAt = Date.now() + 10 * 60 * 1000;
-  record.otp       = otp;
-  record.expiresAt = expiresAt;
-
+  if (!record) return res.status(400).json({ error: "No pending signup. Please start again." });
+  record.otp = generateOTP();
+  record.expiresAt = Date.now() + 10 * 60 * 1000;
   try {
-    await sendOTPEmail(email, otp, record.name.split(" ")[0]);
-    console.log(`OTP resent to ${email}: ${otp}`);
-    res.json({ message: "A new OTP has been sent to your email." });
+    await sendOTPEmail(email, record.otp, record.name.split(" ")[0]);
+    res.json({ message: "New OTP sent!" });
   } catch (err) {
-    console.error("resend-otp error:", err);
     res.status(500).json({ error: "Failed to resend OTP." });
   }
 });
 
-// ─── ROUTE: Login ─────────────────────────────────────
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
   try {
     const [rows] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-    if (rows.length === 0) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-    const user = rows[0];
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: "24h" });
-    res.json({ token, user: { name: user.name, email: user.email, accountNo: user.account_no } });
+    if (rows.length === 0) return res.status(401).json({ error: "Invalid email or password" });
+    const match = await bcrypt.compare(password, rows[0].password);
+    if (!match) return res.status(401).json({ error: "Invalid email or password" });
+    const token = jwt.sign({ id: rows[0].id, email: rows[0].email }, JWT_SECRET, { expiresIn: "24h" });
+    res.json({ token, user: { name: rows[0].name, email: rows[0].email, accountNo: rows[0].account_no } });
   } catch (err) {
-    console.error(err);
+    console.error(err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ─── ROUTE: Get Account Summary ───────────────────────
 app.get("/api/account", authenticate, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      "SELECT name, email, account_no, balance FROM users WHERE id = ?", [req.user.id]
-    );
+    const [rows] = await db.query("SELECT name,email,account_no,balance FROM users WHERE id=?", [req.user.id]);
     if (rows.length === 0) return res.status(404).json({ error: "User not found" });
     res.json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// ─── ROUTE: Get Transactions ──────────────────────────
 app.get("/api/transactions", authenticate, async (req, res) => {
   const { type } = req.query;
-  let query  = "SELECT * FROM transactions WHERE user_id = ?";
+  let query = "SELECT * FROM transactions WHERE user_id=?";
   const params = [req.user.id];
-  if (type === "credit" || type === "debit") { query += " AND type = ?"; params.push(type); }
+  if (type === "credit" || type === "debit") { query += " AND type=?"; params.push(type); }
   query += " ORDER BY created_at DESC";
   try {
     const [rows] = await db.query(query, params);
     res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ error: "Server error" }); }
 });
 
-// ─── ROUTE: Transfer Money ────────────────────────────
 app.post("/api/transfer", authenticate, async (req, res) => {
   const { recipient_name, recipient_account, amount, remark } = req.body;
-  if (!recipient_name || !recipient_account || !amount || amount <= 0) {
-    return res.status(400).json({ error: "All fields are required" });
-  }
+  if (!recipient_name || !recipient_account || !amount || amount <= 0) return res.status(400).json({ error: "All fields required" });
   try {
-    const [rows] = await db.query("SELECT balance FROM users WHERE id = ?", [req.user.id]);
-    if (amount > rows[0].balance) {
-      return res.status(400).json({ error: "Insufficient balance" });
-    }
-    await db.query("UPDATE users SET balance = balance - ? WHERE id = ?", [amount, req.user.id]);
-    const description = `Transfer to ${recipient_name} (A/C: ${recipient_account}) – ${remark || "Transfer"}`;
-    await db.query(
-      "INSERT INTO transactions (user_id, description, type, amount) VALUES (?, ?, ?, ?)",
-      [req.user.id, description, "debit", amount]
-    );
-    const [updated] = await db.query("SELECT balance FROM users WHERE id = ?", [req.user.id]);
+    const [rows] = await db.query("SELECT balance FROM users WHERE id=?", [req.user.id]);
+    if (amount > rows[0].balance) return res.status(400).json({ error: "Insufficient balance" });
+    await db.query("UPDATE users SET balance=balance-? WHERE id=?", [amount, req.user.id]);
+    const desc = `Transfer to ${recipient_name} (A/C: ${recipient_account})${remark ? " – " + remark : ""}`;
+    await db.query("INSERT INTO transactions (user_id,description,type,amount) VALUES (?,?,?,?)", [req.user.id, desc, "debit", amount]);
+    const [updated] = await db.query("SELECT balance FROM users WHERE id=?", [req.user.id]);
     res.json({ message: "Transfer successful", newBalance: updated[0].balance });
   } catch (err) {
-    console.error(err);
+    console.error(err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ─── START SERVER ─────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`Vertex Bank server running at http://localhost:${PORT}`);
+app.listen(PORT, async () => {
+  console.log(`NeoBank server running on port ${PORT}`);
+  await initDB();
 });
