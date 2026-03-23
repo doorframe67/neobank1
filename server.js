@@ -16,13 +16,17 @@ const GMAIL_USER = process.env.GMAIL_USER || "";
 const GMAIL_PASS = process.env.GMAIL_PASS || "";
 
 const db = mysql.createPool({
-  host:     process.env.MYSQL_HOST,
-  user:     process.env.MYSQL_USER,
-  password: process.env.MYSQL_PASSWORD,
-  database: process.env.MYSQL_DATABASE,
-  port:     process.env.MYSQL_PORT || 3306,
+  host:               process.env.MYSQL_HOST,
+  user:               process.env.MYSQL_USER,
+  password:           process.env.MYSQL_PASSWORD,
+  database:           process.env.MYSQL_DATABASE,
+  port:               process.env.MYSQL_PORT || 3306,
   waitForConnections: true,
-  connectionLimit: 10
+  connectionLimit:    5,
+  connectTimeout:     30000,
+  acquireTimeout:     30000,
+  timeout:            30000,
+  ssl:                { rejectUnauthorized: false }
 });
 
 async function initDB() {
